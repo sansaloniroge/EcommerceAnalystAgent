@@ -1,0 +1,26 @@
+.env
+.idea/
+.python-version
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+.venv/
+
+.DS_Store
+
+.eval_artifacts/
+
+# Raw dataset CSVs -- downloaded manually from Kaggle, not versioned.
+data/raw/*
+!data/raw/.gitkeep
+
+# Claude Code support files
+CLAUDE.md
+PORTFOLIO_GOALS.md
