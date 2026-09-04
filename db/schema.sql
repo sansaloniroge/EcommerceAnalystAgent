@@ -27,9 +27,15 @@ CREATE TABLE IF NOT EXISTS sellers (
     seller_state              TEXT
 );
 
+-- product_category_name is NOT a FK to product_category_name_translation:
+-- two real category names in the raw dataset ("pc_gamer",
+-- "portateis_cozinha_e_preparadores_de_alimentos") have no corresponding
+-- translation row. A real data-quality gap in the source, not backfilled
+-- with an invented translation -- queries joining to the translation table
+-- should expect some products to have no English name.
 CREATE TABLE IF NOT EXISTS products (
     product_id                    TEXT PRIMARY KEY,
-    product_category_name         TEXT REFERENCES product_category_name_translation (product_category_name),
+    product_category_name         TEXT,
     product_name_lenght            INTEGER,
     product_description_lenght     INTEGER,
     product_photos_qty             INTEGER,
