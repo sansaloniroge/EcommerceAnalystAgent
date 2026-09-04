@@ -42,8 +42,30 @@ def test_rows_for_copy_enforces_requested_column_order(tmp_path: Path):
     assert rows[0] == ("s1", 1000, "Sao Paulo", "SP")
 
 
+def test_rows_for_copy_keeps_integer_columns_as_int_despite_missing_values(tmp_path: Path):
+    """
+    Regression test: pandas silently upgrades an integer column with any
+    missing values to float64, so a clean value like 40 comes out as the
+    Python float 40.0 -- which Postgres COPY rejects for an INTEGER column
+    ("invalid input syntax for type integer: 40.0"). int_columns must use
+    pandas' nullable Int64 dtype to avoid this.
+    """
+    csv_path = tmp_path / "products.csv"
+    _write_csv(
+        csv_path,
+        header=["product_id", "product_weight_g"],
+        rows=[["p1", "500"], ["p2", ""]],  # p2's weight is missing
+    )
+
+    rows = _rows_for_copy(csv_path, ["product_id", "product_weight_g"], int_columns=["product_weight_g"])
+
+    assert rows[0] == ("p1", 500)
+    assert isinstance(rows[0][1], int)
+    assert rows[1] == ("p2", None)
+
+
 def test_table_load_order_puts_parents_before_children():
-    table_names = [t for _, t, _ in TABLES]
+    table_names = [t for _, t, _, _ in TABLES]
     # product_category_name_translation, customers, sellers, products are
     # all referenced by later tables (products, orders, order_items) and
     # must load first for the FKs in db/schema.sql to succeed.
