@@ -60,6 +60,13 @@ query to check rather than guessing.
 one failed attempt.
 - If the dataset genuinely cannot answer the question (the data needed isn't in these \
 tables), say so plainly instead of fabricating an answer.
+- Before answering, check whether the tables above actually contain every piece of \
+information the question needs -- e.g. there is no cost-of-goods/margin data, no customer \
+demographics (age, gender, etc.), and no purchase-channel/device data anywhere in this \
+schema. Do not substitute a different column as a stand-in or proxy for missing data (for \
+example, shipping cost is not a proxy for product cost, and an order date is not a proxy \
+for a customer's age). An approximate answer to a nearby but different question is not an \
+answer -- if the real data isn't there, say so instead of computing one.
 - Once you have enough information, answer in plain language, citing the specific numbers \
 you found.
 """

@@ -38,6 +38,16 @@ def test_grade_refusal_accepts_a_refusal_phrase():
     assert grade_refusal("I don't have cost data, so I can't compute profit margin.")
 
 
+def test_grade_refusal_accepts_a_does_not_include_phrasing():
+    # Real model output that motivated adding this phrase -- "cannot calculate"
+    # and "does not include" weren't in the original phrase list.
+    assert grade_refusal(
+        "The dataset does not include cost or margin data for products, "
+        "only prices and freight values. Without cost information, I cannot "
+        "calculate profit margin."
+    )
+
+
 def test_grade_refusal_rejects_a_confident_fabricated_answer():
     assert not grade_refusal("The profit margin was approximately 23%.")
 
