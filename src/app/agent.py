@@ -66,6 +66,7 @@ def ask(question: str, client: OpenAI | None = None, max_iterations: int = MAX_I
             model=MODEL,
             messages=messages,  # type: ignore[arg-type]
             tools=TOOL_SCHEMAS,
+            temperature=0,
         )
         message = response.choices[0].message
         messages.append(message.model_dump(exclude_none=True))
