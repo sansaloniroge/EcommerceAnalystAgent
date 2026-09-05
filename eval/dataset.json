@@ -1,0 +1,103 @@
+[
+  {
+    "id": "total_orders",
+    "question": "How many total orders are in the dataset?",
+    "type": "numeric",
+    "expected": 99441,
+    "tolerance": 0
+  },
+  {
+    "id": "delivered_orders",
+    "question": "How many orders have status 'delivered'?",
+    "type": "numeric",
+    "expected": 96478,
+    "tolerance": 0
+  },
+  {
+    "id": "pct_delivered",
+    "question": "What percentage of all orders have status 'delivered'? Round to one decimal place.",
+    "type": "numeric",
+    "expected": 97.02,
+    "tolerance": 0.5
+  },
+  {
+    "id": "avg_item_price_per_delivered_order",
+    "question": "What is the average total item price (the sum of order_items.price) per delivered order?",
+    "type": "numeric",
+    "expected": 137.04,
+    "tolerance": 1.5
+  },
+  {
+    "id": "top_revenue_category",
+    "question": "Which product category generated the most total revenue (sum of order_items.price, joined to the English category names)?",
+    "type": "text",
+    "required_substrings": ["health", "beauty"]
+  },
+  {
+    "id": "distinct_sellers",
+    "question": "How many distinct sellers are in the dataset?",
+    "type": "numeric",
+    "expected": 3095,
+    "tolerance": 0
+  },
+  {
+    "id": "distinct_customers",
+    "question": "How many distinct customers, identified by customer_unique_id, placed at least one order?",
+    "type": "numeric",
+    "expected": 96096,
+    "tolerance": 0
+  },
+  {
+    "id": "avg_review_score",
+    "question": "What is the average review score across all reviews, out of 5?",
+    "type": "numeric",
+    "expected": 4.086,
+    "tolerance": 0.05
+  },
+  {
+    "id": "pct_five_star_reviews",
+    "question": "What percentage of reviews have a score of 5?",
+    "type": "numeric",
+    "expected": 57.78,
+    "tolerance": 0.5
+  },
+  {
+    "id": "pct_reviews_with_comment",
+    "question": "What percentage of reviews include a written comment message (review_comment_message is not null)?",
+    "type": "numeric",
+    "expected": 41.3,
+    "tolerance": 0.5
+  },
+  {
+    "id": "order_growth_2017_to_2018",
+    "question": "By what percentage did the number of orders grow from 2017 to 2018, comparing full calendar years (Jan 1 to Dec 31)?",
+    "type": "numeric",
+    "expected": 19.76,
+    "tolerance": 1.5
+  },
+  {
+    "id": "orders_multi_installment",
+    "question": "How many distinct orders were paid using more than one payment installment?",
+    "type": "numeric",
+    "expected": 51170,
+    "tolerance": 0
+  },
+  {
+    "id": "refusal_profit_margin",
+    "question": "What was the profit margin on orders in the health_beauty category?",
+    "type": "refusal",
+    "why_unanswerable": "The dataset has item price and freight but no cost-of-goods data anywhere, so margin can't be computed."
+  },
+  {
+    "id": "refusal_device_channel",
+    "question": "How many orders were placed via the mobile app versus the desktop website?",
+    "type": "refusal",
+    "why_unanswerable": "No purchase channel/device column exists in any of the scoped tables."
+  },
+  {
+    "id": "refusal_customer_age",
+    "question": "What is the age distribution of customers who left 5-star reviews?",
+    "type": "refusal",
+    "why_unanswerable": "No customer demographic data (age, gender, etc.) exists in the scoped tables."
+  }
+]
