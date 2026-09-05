@@ -70,7 +70,7 @@
   },
   {
     "id": "order_growth_2017_to_2018",
-    "question": "By what percentage did the number of orders grow from 2017 to 2018, comparing full calendar years (Jan 1 to Dec 31)?",
+    "question": "By what percentage did the total number of orders -- of any status, not just delivered -- grow from 2017 to 2018, comparing full calendar years (Jan 1 to Dec 31) by order_purchase_timestamp?",
     "type": "numeric",
     "expected": 19.76,
     "tolerance": 1.5
