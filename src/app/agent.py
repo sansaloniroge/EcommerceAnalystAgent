@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageFunctionToolCall
 
 from app.schema_doc import SYSTEM_PROMPT
-from app.tools.sql_query import TOOL_SCHEMA, run_sql_query
+from app.tools.calculator import TOOL_SCHEMA as CALCULATOR_TOOL_SCHEMA
+from app.tools.calculator import run_calculator
+from app.tools.sql_query import TOOL_SCHEMA as SQL_QUERY_TOOL_SCHEMA
+from app.tools.sql_query import run_sql_query
 
 MODEL = "gpt-4.1-mini"
 MAX_ITERATIONS = 6
@@ -19,8 +22,11 @@ REFUSAL_MESSAGE = (
     "for what I tried."
 )
 
-TOOLS_BY_NAME = {
+TOOL_SCHEMAS = [SQL_QUERY_TOOL_SCHEMA, CALCULATOR_TOOL_SCHEMA]
+
+TOOLS_BY_NAME: dict[str, Callable[..., dict[str, Any]]] = {
     "sql_query": run_sql_query,
+    "calculator": run_calculator,
 }
 
 
@@ -45,9 +51,8 @@ def _run_tool_call(tool_call: ChatCompletionMessageFunctionToolCall) -> dict[str
 
 def ask(question: str, client: OpenAI | None = None, max_iterations: int = MAX_ITERATIONS) -> AgentResult:
     """
-    Minimal hand-rolled tool-calling loop (roadmap step 2 -- sql_query only,
-    no calculator yet). See PORTFOLIO design doc / README for the full loop
-    design and the guardrails added in a later step.
+    Hand-rolled tool-calling loop -- sql_query and calculator. See PORTFOLIO
+    design doc / README for the full loop design and guardrails.
     """
     client = client or OpenAI()
     messages: list[dict[str, Any]] = [
@@ -60,7 +65,7 @@ def ask(question: str, client: OpenAI | None = None, max_iterations: int = MAX_I
         response = client.chat.completions.create(
             model=MODEL,
             messages=messages,  # type: ignore[arg-type]
-            tools=[TOOL_SCHEMA],
+            tools=TOOL_SCHEMAS,
         )
         message = response.choices[0].message
         messages.append(message.model_dump(exclude_none=True))
