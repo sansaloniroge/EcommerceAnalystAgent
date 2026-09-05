@@ -5,13 +5,14 @@ from typing import Any
 from openai.types.chat import ChatCompletionFunctionToolParam
 
 from app.db import connect_readonly
+from app.tools.sql_guard import check_query, ensure_row_limit
 
-# Minimal version for the roadmap's step 2 (bare tool-calling loop). The
-# agent_readonly role (db/schema.sql) already rejects any non-SELECT
-# statement at the database level -- real protection, not just an
-# assumption. Step 3 adds application-level guardrails on top of that
-# (SELECT-only parsing, keyword blacklist, LIMIT, timeout) as defense in
-# depth, plus tests that try to break them.
+# The agent_readonly role (db/schema.sql) rejects any non-SELECT statement
+# at the database level -- real protection, not just an assumption.
+# check_query/ensure_row_limit (roadmap step 3) add application-level
+# guardrails on top of that (SELECT-only parsing, keyword blacklist, row
+# limit; the statement timeout lives in db.connect_readonly) as defense in
+# depth, so a bad query is caught before it ever reaches Postgres.
 
 TOOL_SCHEMA: ChatCompletionFunctionToolParam = {
     "type": "function",
@@ -42,6 +43,11 @@ def run_sql_query(query: str) -> dict[str, Any]:
     Never raises -- returns {"error": ...} so the agent loop can feed the
     failure back to the model instead of crashing the whole request.
     """
+    error = check_query(query)
+    if error:
+        return {"error": error}
+    query = ensure_row_limit(query)
+
     try:
         with connect_readonly() as conn, conn.cursor() as cur:
             cur.execute(query)
