@@ -28,6 +28,7 @@ mypy = "^1.11.0"
 
 [tool.poetry.scripts]
 load-dataset = "scripts.load_dataset:main"
+run-eval = "scripts.eval_runner:main"
 
 [build-system]
 requires = ["poetry-core"]
