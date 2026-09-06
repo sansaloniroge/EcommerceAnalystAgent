@@ -35,7 +35,7 @@ One service (FastAPI) and one database (Postgres) -- deliberately no queue, work
 - **Database**: Postgres, loaded once from the Olist CSVs (`poetry run load-dataset`); the agent connects as `agent_readonly`, a role with `SELECT`-only grants -- a real least-privilege boundary, not just an assumption
 - **Model**: `gpt-4.1-mini`
 - **Tests**: pytest -- unit tests for pure logic (guardrails, calculator, grading, agent control flow via a hand-written fake OpenAI client) run by default; `@pytest.mark.db` tests hit a real Postgres (`make test-db`)
-- **CI**: GitHub Actions (lint + typecheck + full test suite, including `-m db` against a real Postgres service container)
+- **CI**: GitHub Actions (lint + typecheck + the default `-m "not db"` test suite on every PR). The `@pytest.mark.db` tests are not run in CI -- they assert against the real loaded Olist dataset's exact row counts, and CI has no access to the Kaggle CSVs (deliberately not fetched via an API key or committed to the repo) -- so they're run locally only (`make test-db`), same as this README's own verification steps.
 
 ## How to run it
 
