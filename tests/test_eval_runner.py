@@ -4,6 +4,8 @@ OpenAI/DB calls. run_eval takes an injectable ask_fn (same pattern as
 agent.ask's injectable client), so these test the runner's plumbing with a
 fake agent instead of a fake OpenAI client.
 """
+import pytest
+
 from app.agent import REFUSAL_MESSAGE, AgentResult
 from scripts.eval_runner import grade_numeric, grade_refusal, grade_text, run_eval, summarize
 
@@ -73,9 +75,9 @@ def test_run_eval_grades_each_question_with_the_injected_agent():
 
 def test_summarize_computes_rates_separately_for_factual_and_refusal_questions():
     results = [
-        {"type": "numeric", "passed": True, "tool_calls": 2},
-        {"type": "numeric", "passed": False, "tool_calls": 1},
-        {"type": "refusal", "passed": True, "tool_calls": 0},
+        {"type": "numeric", "passed": True, "tool_calls": 2, "latency_s": 1.0},
+        {"type": "numeric", "passed": False, "tool_calls": 1, "latency_s": 2.0},
+        {"type": "refusal", "passed": True, "tool_calls": 0, "latency_s": 0.5},
     ]
 
     summary = summarize(results)
@@ -84,3 +86,4 @@ def test_summarize_computes_rates_separately_for_factual_and_refusal_questions()
     assert summary["success_rate"] == 0.5
     assert summary["correct_refusal_rate"] == 1.0
     assert summary["avg_tool_calls"] == 1.0
+    assert summary["avg_latency_s"] == pytest.approx(3.5 / 3)
