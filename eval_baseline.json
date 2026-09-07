@@ -1,0 +1,9 @@
+{
+  "score_pct": 100.0,
+  "success_rate": 1.0,
+  "correct_refusal_rate": 1.0,
+  "avg_tool_calls": 0.8,
+  "n": 5,
+  "commit_sha": "872da398ac4758c3e61f5cd4063ed371e6f34a53",
+  "updated_at": "2026-09-07T06:55:18.407089+00:00"
+}

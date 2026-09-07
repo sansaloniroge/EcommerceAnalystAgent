@@ -30,7 +30,7 @@ One service (FastAPI) and one database (Postgres) -- deliberately no queue, work
 ## Stack
 
 - **API**: FastAPI + uvicorn (`POST /ask`, `GET /health`)
-- **Agent loop**: hand-rolled over OpenAI's tool-calling API (`app/agent.py`) -- no LangChain or agent framework, same "thin, explicit adapters" choice made in BusinessAssistant/PharmaAssistant. `temperature=0` for more reproducible tool calls; hard 6-iteration cap with an honest refusal fallback if it's exhausted.
+- **Agent loop**: hand-rolled over OpenAI's tool-calling API (`app/agent.py`) -- no LangChain or agent framework, same "thin, explicit adapters" choice made in BusinessAssistant/PharmaAssistant. `temperature=0` for more reproducible tool calls; hard 6-iteration cap with an honest refusal fallback if it's exhausted. A second, equivalent implementation on LangGraph (`app/agent_langgraph.py`) lives alongside it -- see [Why two implementations](#why-two-implementations).
 - **Tools**: `sql_query` (real SELECT-only SQL against Postgres, guarded -- see below) and `calculator` (arithmetic via an `ast`-whitelist evaluator, never `eval()` on model-supplied text)
 - **Database**: Postgres, loaded once from the Olist CSVs (`poetry run load-dataset`); the agent connects as `agent_readonly`, a role with `SELECT`-only grants -- a real least-privilege boundary, not just an assumption
 - **Model**: `gpt-4.1-mini`
@@ -98,6 +98,57 @@ Objective-correctness evaluation (`eval/dataset.json` + `poetry run run-eval`) -
 
 Grading is rule-based: numeric answers pass if any number extracted from the response text is within a fixed tolerance of the ground truth; the one text question requires specific substrings; refusals are graded by a hand-picked list of refusal phrases (or the agent's own hard-coded refusal message). This is intentionally simple, and imperfect on the margins -- see [Known limitations](#known-limitations).
 
+### CI eval gate
+
+Every PR into `dev` runs a real eval end-to-end (`.github/workflows/eval-gate.yml`): boots Postgres, loads the schema plus a small **synthetic CI fixture** (`db/ci_fixture.sql`, 5 questions in `eval/ci_dataset.json`, ground truth computed by hand from that fixture's own rows), runs the agent against real OpenAI, then scores it (`scripts/eval_gate_check.py` -- mean of success rate and correct-refusal rate as a percentage) against `eval_baseline.json`. It's a smoke gate, not the full 15-question benchmark above: CI has no access to the real Kaggle CSVs (see [Stack](#stack)), so the 15-question run against the real dataset stays a manual, local step. The PR fails and gets a comment with the score breakdown if the CI-fixture score drops more than 2 percentage points below baseline. Current baseline: 100% (5/5, `eval_baseline.json`).
+
+**Updating the baseline on purpose**, when a change genuinely improves the system:
+
+```bash
+poetry run python -m scripts.update_eval_baseline eval_run_result.json
+```
+
+It prints the old vs. new score and asks for confirmation before overwriting `eval_baseline.json`. Commit the updated file as part of the same PR.
+
+## Why two implementations
+
+`app/agent.py` (the hand-rolled loop above) is a deliberate choice, not a gap -- but most teams hiring for this kind of role run their agents on a framework, so `app/agent_langgraph.py` is a second, equivalent implementation on [LangGraph](https://langchain-ai.github.io/langgraph/), sharing everything that isn't orchestration: same system prompt (`app/schema_doc.py`), same tools, same SQL guardrails (`app/tools/sql_guard.py`, imported directly -- not reimplemented), same `REFUSAL_MESSAGE`. Both are real, both are evaluated the same way (`poetry run run-eval --impl manual|langgraph`), and both live in the repo side by side rather than one replacing the other -- the point is being able to speak to both in an interview: why hand-roll one, and when the framework is the better call.
+
+```mermaid
+flowchart TD
+    plan -->|tool call| call_tool
+    plan -->|no tool call, or out of iterations| respond
+    call_tool -->|ok| validate_guardrail
+    call_tool -->|raises| fallback
+    validate_guardrail -->|clean, or retries left| plan
+    validate_guardrail -->|violation, retries exhausted| give_up
+    fallback --> respond
+    give_up --> respond
+    respond --> END
+```
+
+**State** (`AgentState`, a `TypedDict`): the LangChain message history (`Annotated[list[BaseMessage], add_messages]`, converted to/from OpenAI's wire format at the LLM call boundary via `langchain_core.messages.utils.convert_to_openai_messages` -- there's no `ChatOpenAI` wrapper here, same raw `openai` client as the manual loop, so the comparison below isolates orchestration as the actual variable), a `guardrail_violation` reason, a `retries` counter, `tool_exception`, and the running `trace`. **Checkpointing**: `MemorySaver`, keyed by `thread_id` -- real cross-turn memory, not just an in-request loop. Concretely:
+
+> Turn 1 (fresh thread): *"How many total orders are in the dataset?"* → **"There are a total of 99,441 orders in the dataset."**
+> Turn 2 (same `thread_id`, no restated context): *"And what percentage of those are delivered?"* → **"Approximately 97.02% of the total orders in the dataset are delivered."**
+
+Turn 2 never re-sends turn 1's question or answer -- the 99,441 figure it reasons from comes entirely from checkpointed state. The eval runner still gives each of the 15 questions its own fresh thread (they're independent by design), so this multi-turn behavior doesn't show up in the eval numbers below -- it's a capability the manual loop doesn't have at all, demonstrated separately (`tests/test_agent_langgraph.py::test_checkpointing_carries_conversation_across_calls_with_same_thread_id`).
+
+**Real run, both implementations, same 15 questions, same live OpenAI API + dataset:**
+
+| Metric | Manual (`app/agent.py`) | LangGraph (`app/agent_langgraph.py`) |
+|---|---|---|
+| Success rate (12 factual) | 100% | 100% |
+| Correct refusal rate (3 unanswerable) | 100% | 100% |
+| Avg. tool calls / question | 1.07 | 1.07 |
+| Avg. latency / question | 2.24s | 2.41s |
+
+Identical correctness -- expected, since both call the same model with the same prompt and tools. The ~7.6% latency gap is the graph's own bookkeeping (state channel merges, checkpoint writes on every node transition) rather than anything answer-quality-related; not measured here: per-query cost, which would need usage tracking neither implementation currently has (see [Known limitations](#known-limitations)).
+
+**The trade-off, honestly:** the manual loop is ~90 lines with the entire control flow visible in one `for` loop -- every retry, every edge case, is something I wrote and can explain line by line, and there's no framework version drift to track. LangGraph took more code (state schema, six node functions, three conditional-edge functions) to express the *same* behavior, but gets checkpointed multi-turn memory for free, makes the retry/fallback logic legible as an explicit graph rather than nested control flow, and is the shape most tooling (LangSmith tracing, LangGraph Studio, prebuilt nodes) expects. For a single-agent, single-provider tool like this one, the manual loop is the right call -- more moving parts here would earn nothing back. The trade-off flips once state gets genuinely complex (many nodes, human-in-the-loop interrupts, sub-agents) or the team already standardizes on LangGraph elsewhere -- know why you'd reach for the framework, not just how to.
+
+**Deliberately not done:** `/ask` still runs the manual implementation only -- wiring in a `?impl=` query param would be easy but wasn't worth the API surface for a comparison that's already fully answered by the eval numbers above.
+
 ## Known limitations
 
 - **The SQL guardrail is a keyword blacklist, not a real parser.** `ensure_row_limit` checks for the presence of a `LIMIT` keyword anywhere in the query text -- a `LIMIT` buried inside a subquery satisfies the check even though the outer query is technically still unbounded. Accepted as a known simplification (the design's deliberate scope was "blacklist + limit + timeout", not a SQL grammar library); the real backstop is still `agent_readonly`'s read-only DB privileges.
@@ -105,6 +156,7 @@ Grading is rule-based: numeric answers pass if any number extracted from the res
 - **The refusal-phrase list is hand-picked, not exhaustive.** A genuinely correct refusal phrased differently than anything in `_REFUSAL_PHRASES` could still be marked as a grading failure rather than a model failure -- this already happened once and was fixed reactively (see the narrative above), which means it can happen again with a new phrasing.
 - **n=15 is a smoke-test-sized eval set**, not a statistically significant benchmark -- useful for catching regressions, not for claiming a stable accuracy percentage.
 - **No `chart` tool or detailed per-request trace beyond the tool-call list already in `/ask`'s response** -- both were explicitly optional ("Pro tier") in the original design and weren't built.
+- **No per-query cost tracking in either agent implementation** -- the "Why two implementations" latency comparison has no cost column for the same reason: neither wraps the OpenAI client to capture token usage/pricing, so a real cost-per-query number isn't measured, not just omitted from the table.
 - **No deployed demo.** A public endpoint backed by real OpenAI calls, running LLM-generated SQL, is a cost and abuse surface disproportionate to what a portfolio reviewer needs -- verified instead via a clean `docker compose up` + load + eval run (see [How to run it](#how-to-run-it)) and the GIF above, a real recorded run rather than a mockup.
 
 ## What's next
