@@ -126,6 +126,7 @@ def main() -> None:
     load_dotenv()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dataset", default="eval/dataset.json", help="Path to the eval question set")
+    ap.add_argument("--out", default=None, help="Optional path to dump {summary, results} as JSON")
     args = ap.parse_args()
 
     dataset_path = (REPO_ROOT / args.dataset) if not Path(args.dataset).is_absolute() else Path(args.dataset)
@@ -147,6 +148,11 @@ def main() -> None:
         else "correct_refusal_rate=n/a"
     )
     print(f"avg_tool_calls={summary['avg_tool_calls']:.2f}" if summary["avg_tool_calls"] is not None else "avg_tool_calls=n/a")
+
+    if args.out:
+        out_path = (REPO_ROOT / args.out) if not Path(args.out).is_absolute() else Path(args.out)
+        with open(out_path, "w") as f:
+            json.dump({"summary": summary, "results": results}, f, indent=2)
 
 
 if __name__ == "__main__":

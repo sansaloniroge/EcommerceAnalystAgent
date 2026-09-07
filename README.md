@@ -98,6 +98,18 @@ Objective-correctness evaluation (`eval/dataset.json` + `poetry run run-eval`) -
 
 Grading is rule-based: numeric answers pass if any number extracted from the response text is within a fixed tolerance of the ground truth; the one text question requires specific substrings; refusals are graded by a hand-picked list of refusal phrases (or the agent's own hard-coded refusal message). This is intentionally simple, and imperfect on the margins -- see [Known limitations](#known-limitations).
 
+### CI eval gate
+
+Every PR into `dev` runs a real eval end-to-end (`.github/workflows/eval-gate.yml`): boots Postgres, loads the schema plus a small **synthetic CI fixture** (`db/ci_fixture.sql`, 5 questions in `eval/ci_dataset.json`, ground truth computed by hand from that fixture's own rows), runs the agent against real OpenAI, then scores it (`scripts/eval_gate_check.py` -- mean of success rate and correct-refusal rate as a percentage) against `eval_baseline.json`. It's a smoke gate, not the full 15-question benchmark above: CI has no access to the real Kaggle CSVs (see [Stack](#stack)), so the 15-question run against the real dataset stays a manual, local step. The PR fails and gets a comment with the score breakdown if the CI-fixture score drops more than 2 percentage points below baseline. Current baseline: 100% (5/5, `eval_baseline.json`).
+
+**Updating the baseline on purpose**, when a change genuinely improves the system:
+
+```bash
+poetry run python -m scripts.update_eval_baseline eval_run_result.json
+```
+
+It prints the old vs. new score and asks for confirmation before overwriting `eval_baseline.json`. Commit the updated file as part of the same PR.
+
 ## Known limitations
 
 - **The SQL guardrail is a keyword blacklist, not a real parser.** `ensure_row_limit` checks for the presence of a `LIMIT` keyword anywhere in the query text -- a `LIMIT` buried inside a subquery satisfies the check even though the outer query is technically still unbounded. Accepted as a known simplification (the design's deliberate scope was "blacklist + limit + timeout", not a SQL grammar library); the real backstop is still `agent_readonly`'s read-only DB privileges.

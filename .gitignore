@@ -16,6 +16,8 @@ coverage.xml
 .DS_Store
 
 .eval_artifacts/
+eval_result.json
+eval_run_result.json
 
 # Raw dataset CSVs -- downloaded manually from Kaggle, not versioned.
 data/raw/*

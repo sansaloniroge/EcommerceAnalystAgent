@@ -1,0 +1,126 @@
+name: eval-gate
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecommerce_agent
+  AGENT_DB_URL: postgresql://agent_readonly:agent_readonly_local_dev@localhost:5432/ecommerce_agent
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+jobs:
+  eval-gate:
+    name: Eval gate (CI fixture)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ecommerce_agent
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ecommerce_agent"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v3
+        with:
+          poetry-version: "2.1.3"
+
+      - name: Install deps
+        run: poetry install --no-interaction --no-root --sync
+
+      - name: Load schema + CI fixture (synthetic data, not the real Kaggle dataset)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ecommerce_agent -f db/schema.sql
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ecommerce_agent -f db/ci_fixture.sql
+
+      - name: Run eval against the CI fixture
+        run: poetry run python -m scripts.eval_runner --dataset eval/ci_dataset.json --out eval_run_result.json
+        env:
+          PYTHONPATH: src
+
+      - name: Score eval run and check against baseline
+        id: eval_gate
+        continue-on-error: true
+        run: poetry run python -m scripts.eval_gate_check eval_run_result.json --out eval_result.json
+        env:
+          PYTHONPATH: src
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            eval_result.json
+            eval_run_result.json
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let result;
+            try {
+              result = JSON.parse(fs.readFileSync('eval_result.json', 'utf8'));
+            } catch (e) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '⚠️ eval-gate: could not read eval_result.json — the eval run likely failed before scoring. Check the workflow logs.',
+              });
+              return;
+            }
+
+            const status = result.passed ? '✅ PASS' : '❌ FAIL';
+            const body = [
+              `### Eval gate: ${status} _(CI fixture, not the full Kaggle dataset — see README)_`,
+              '',
+              `| Metric | Value |`,
+              `|---|---|`,
+              `| Score | ${result.score_pct.toFixed(2)}% (n=${result.n}) |`,
+              `| Success rate | ${(result.success_rate * 100).toFixed(2)}% |`,
+              `| Correct refusal rate | ${(result.correct_refusal_rate * 100).toFixed(2)}% |`,
+              `| Avg tool calls (informational, not gated) | ${result.avg_tool_calls.toFixed(2)} |`,
+              `| Baseline | ${result.baseline_score_pct.toFixed(2)}% |`,
+              `| Tolerance | ${result.tolerance_pct.toFixed(2)}pp |`,
+              `| Delta | ${result.delta_pct >= 0 ? '+' : ''}${result.delta_pct.toFixed(2)}pp |`,
+              '',
+              result.passed
+                ? '_No regression detected._'
+                : '_Score dropped below baseline minus tolerance. If this drop is expected, fix the regression. If the change intentionally improves the system, run `poetry run python -m scripts.update_eval_baseline eval_run_result.json` locally and commit the new `eval_baseline.json`._',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Fail if eval regressed
+        if: steps.eval_gate.outcome == 'failure'
+        run: exit 1

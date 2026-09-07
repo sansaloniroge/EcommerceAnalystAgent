@@ -1,0 +1,35 @@
+[
+  {
+    "id": "ci_delivered_order_count",
+    "question": "How many orders have status 'delivered'?",
+    "type": "numeric",
+    "expected": 2,
+    "tolerance": 0
+  },
+  {
+    "id": "ci_avg_item_price_delivered",
+    "question": "What is the average order_items.price for orders with status 'delivered'? Only count each order's items, not payments.",
+    "type": "numeric",
+    "expected": 150.0,
+    "tolerance": 0.01
+  },
+  {
+    "id": "ci_total_freight_delivered",
+    "question": "What is the total freight_value across all delivered orders?",
+    "type": "numeric",
+    "expected": 30.0,
+    "tolerance": 0.01
+  },
+  {
+    "id": "ci_refusal_profit_margin",
+    "question": "What was the profit margin on order_1?",
+    "type": "refusal",
+    "why_unanswerable": "The dataset has item price and freight but no cost-of-goods data anywhere, so margin can't be computed."
+  },
+  {
+    "id": "ci_refusal_customer_age",
+    "question": "What is the average age of customers who placed a delivered order?",
+    "type": "refusal",
+    "why_unanswerable": "There's no birthdate or age column for customers anywhere in the schema."
+  }
+]
