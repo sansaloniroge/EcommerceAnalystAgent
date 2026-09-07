@@ -12,12 +12,19 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any, Callable
 
 from dotenv import load_dotenv
 
 from app.agent import REFUSAL_MESSAGE, AgentResult, ask
+from app.agent_langgraph import ask_langgraph
+
+IMPLEMENTATIONS: dict[str, Callable[[str], AgentResult]] = {
+    "manual": ask,
+    "langgraph": ask_langgraph,
+}
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -96,7 +103,9 @@ def run_eval(
 ) -> list[dict[str, Any]]:
     results = []
     for question in dataset:
+        t0 = time.perf_counter()
         result = ask_fn(question["question"])
+        latency_s = time.perf_counter() - t0
         results.append(
             {
                 "id": question["id"],
@@ -106,6 +115,7 @@ def run_eval(
                 "tool_calls": len(result.trace),
                 "iterations_used": result.iterations_used,
                 "passed": grade(question, result),
+                "latency_s": latency_s,
             }
         )
     return results
@@ -119,6 +129,7 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
         "success_rate": (sum(r["passed"] for r in factual) / len(factual)) if factual else None,
         "correct_refusal_rate": (sum(r["passed"] for r in refusals) / len(refusals)) if refusals else None,
         "avg_tool_calls": sum(r["tool_calls"] for r in results) / len(results) if results else None,
+        "avg_latency_s": sum(r["latency_s"] for r in results) / len(results) if results else None,
     }
 
 
@@ -127,13 +138,19 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dataset", default="eval/dataset.json", help="Path to the eval question set")
     ap.add_argument("--out", default=None, help="Optional path to dump {summary, results} as JSON")
+    ap.add_argument(
+        "--impl",
+        choices=sorted(IMPLEMENTATIONS),
+        default="manual",
+        help="Which agent implementation to evaluate (see README 'Why two implementations')",
+    )
     args = ap.parse_args()
 
     dataset_path = (REPO_ROOT / args.dataset) if not Path(args.dataset).is_absolute() else Path(args.dataset)
     with open(dataset_path) as f:
         dataset = json.load(f)
 
-    results = run_eval(dataset)
+    results = run_eval(dataset, ask_fn=IMPLEMENTATIONS[args.impl])
     for r in results:
         status = "PASS" if r["passed"] else "FAIL"
         print(f"[{status}] {r['id']} ({r['tool_calls']} tool calls): {r['answer']}")
@@ -148,6 +165,7 @@ def main() -> None:
         else "correct_refusal_rate=n/a"
     )
     print(f"avg_tool_calls={summary['avg_tool_calls']:.2f}" if summary["avg_tool_calls"] is not None else "avg_tool_calls=n/a")
+    print(f"avg_latency_s={summary['avg_latency_s']:.2f}" if summary["avg_latency_s"] is not None else "avg_latency_s=n/a")
 
     if args.out:
         out_path = (REPO_ROOT / args.out) if not Path(args.out).is_absolute() else Path(args.out)
